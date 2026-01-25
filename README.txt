@@ -146,7 +146,7 @@ You are free to modify and redistribute under the same license.
 
 **Akash Chakraborty**  
 🌐 https://ezverse.in  
-📧 support@upigateway.com  
+📧 ezstore2405@gmail.com  
 
 For subscriptions, API access, and support, visit the EZ-VERSE website.
 
