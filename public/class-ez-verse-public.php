@@ -177,7 +177,7 @@ add_action('plugins_loaded', function () {
 		{
 
 			$this->id = 'ez-verse'; 
-			$this->icon = ''; 
+			$this->icon = plugins_url('icon/icon.gif', __FILE__); 
 			$this->has_fields = false; 
 			$this->title = __('Ez-Verse', 'text-domain'); 
 			$this->method_title = __('Ez-Verse', 'text-domain'); 
