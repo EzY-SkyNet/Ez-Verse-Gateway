@@ -174,7 +174,11 @@ class Ezverse_WooCommerce {
 		$this->loader->add_action( 'wp_enqueue_scripts', $plugin_public, 'enqueue_scripts' );
 		$this->loader->add_action( 'template_redirect', $plugin_public, 'template_redirect',1 );
 		$this->loader->add_filter( 'woocommerce_payment_gateways', $plugin_public, 'woocommerce_payment_gateways' );
-
+		$this->loader->add_action( 'woocommerce_checkout_create_order', $plugin_public, 'save_public_order_id', 20 );
+		$this->loader->add_filter( 'woocommerce_order_number', $plugin_public, 'replace_order_number', 10, 2 );
+		$this->loader->add_filter( 'manage_edit-shop_order_columns', $plugin_public, 'add_public_order_id_column' );
+        $this->loader->add_action( 'manage_shop_order_posts_custom_column', $plugin_public, 'render_public_order_id_column', 10, 2 );
+        $this->loader->add_action( 'pre_get_posts', $plugin_public, 'search_by_public_order_id' );
 	}
 
 	/**

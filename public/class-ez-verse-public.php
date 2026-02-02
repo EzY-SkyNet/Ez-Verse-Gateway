@@ -74,6 +74,86 @@ class Ezverse_WooCommerce_Public
             update_option('Ezverse_WooCommerce_uuid', $uuid);
         }
     }
+
+    private function generate_mixed_order_id()
+{
+    $host = parse_url(home_url(), PHP_URL_HOST);
+    $host = preg_replace('/^www\./', '', $host);
+
+    // Domain prefix (TE)
+    $prefix = strtoupper(substr($host, 0, 2));
+
+    // Random parts
+    $alpha1 = strtoupper(wp_generate_password(3, false, false)); // DHD
+    $number = wp_rand(10000, 99999); // 45624
+    $alpha2 = strtoupper(wp_generate_password(3, false, false)); // DCH
+
+    return "{$prefix}_{$alpha1}{$number}{$alpha2}";
+}
+
+public function save_public_order_id($order)
+{
+    // Prevent regeneration if already exists
+    if ($order->get_meta('_public_order_id')) {
+        return;
+    }
+
+    $order->update_meta_data(
+        '_public_order_id',
+        $this->generate_mixed_order_id()
+    );
+}
+
+public function add_public_order_id_column($columns)
+{
+    $columns['public_order_id'] = 'Public Order ID';
+    return $columns;
+}
+
+public function render_public_order_id_column($column, $post_id)
+{
+    if ($column === 'public_order_id') {
+        $order = wc_get_order($post_id);
+        echo esc_html($order->get_meta('_public_order_id'));
+    }
+}
+
+public function search_by_public_order_id( $query ) {
+    global $pagenow, $typenow;
+
+    if (
+        ! is_admin() ||
+        $pagenow !== 'edit.php' ||
+        $typenow !== 'shop_order' ||
+        empty( $_GET['s'] )
+    ) {
+        return;
+    }
+
+    $search = sanitize_text_field( $_GET['s'] );
+
+    // Only trigger for our format
+    if ( strpos( $search, '_' ) === false ) {
+        return;
+    }
+
+    $query->set( 'meta_query', [
+        [
+            'key'     => '_public_order_id',
+            'value'   => $search,
+            'compare' => '='
+        ]
+    ] );
+
+    $query->set( 's', '' ); // disable default search
+}
+
+public function replace_order_number($order_number, $order)
+{
+    $public_id = $order->get_meta('_public_order_id');
+    return $public_id ? $public_id : $order_number;
+}
+
 public function template_redirect()
 {
     if (!isset($_GET['order_id'])) {
@@ -239,11 +319,19 @@ add_action('plugins_loaded', function () {
         wp_die('Signature mismatch', '', 401);
     }
 
-    $order = wc_get_order($input['order_id']);
+    $public_id = sanitize_text_field($input['order_id']);
 
-    if (!$order) {
-        wp_die('Order not found', '', 404);
-    }
+$orders = wc_get_orders([
+    'meta_key'   => '_public_order_id',
+    'meta_value' => $public_id,
+    'limit'      => 1,
+]);
+
+$order = $orders ? $orders[0] : false;
+
+if (!$order) {
+    wp_die('Order not found', '', 404);
+}
 
     if ($input['status'] === 'SUCCESS') {
 
@@ -333,12 +421,12 @@ add_action('plugins_loaded', function () {
              if (strlen($phone) !== 10) {
              $phone = '9999999999'; 
         }
-
+    $public_order_id = $order->get_meta('_public_order_id');
 
     $payload = [
         'client_id'       => $this->client_id,
         'client_secret'   => $this->client_secret,
-        'order_id'        => (string) $order_id,
+        'order_id'        => $public_order_id,
         'amount'          => (float) $order->get_total(),
         'customer_name'   => substr($order->get_formatted_billing_full_name(), 0, 255),
         'customer_mobile' => $phone,
@@ -421,11 +509,13 @@ add_action('plugins_loaded', function () {
     }
 
     $timestamp = time();
+    
+    $public_order_id = $order->get_meta('_public_order_id');
 
     $payload = [
         'client_id'     => $this->client_id,
         'client_secret' => $this->client_secret,
-        'order_id'      => (string) $order_id,
+        'order_id'      => $public_order_id,
     ];
 
     $signature = $this->ezverse_signature([
