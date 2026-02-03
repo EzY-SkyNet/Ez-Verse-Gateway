@@ -28,5 +28,28 @@
 	 * Although scripts in the WordPress core, Plugins and Themes may be
 	 * practising this, we should strive to set a better example in our own work.
 	 */
+	$(document).on('click', '#ezverse-edit', function (e) {
+        e.preventDefault();
+
+        if (!confirm('Are you sure you want to edit credentials?')) {
+            return;
+        }
+
+        $.post(
+            ezverseAdmin.ajax_url,
+            {
+                action: 'ezverse_reset_profile',
+                nonce: ezverseAdmin.nonce
+            }
+        ).done(function (response) {
+            if (response.success) {
+                location.reload();
+            } else {
+                alert('Failed to reset Ez-Verse profile.');
+            }
+        }).fail(function () {
+            alert('AJAX request failed.');
+        });
+    });
 
 })( jQuery );

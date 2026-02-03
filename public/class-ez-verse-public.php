@@ -238,8 +238,97 @@ add_action('plugins_loaded', function () {
     public string $client_id = '';
     public string $client_secret = '';
     public string $default_email = '';
+    
+    /**
+     * Generate signature in plugin options.
+     *
+     * @since    1.0.1
+     */
+    
+    private function fetch_user_profile()
+{
+    $timestamp = time();
 
-	    /**
+    $signature = hash_hmac(
+        'sha256',
+        $this->client_id . '|' . $timestamp,
+        $this->client_secret
+    );
+
+    $response = wp_remote_post(
+        $this->base_url . '/api/v4/user',
+        [
+            'headers' => [
+                'Content-Type' => 'application/json',
+                'X-TIMESTAMP'  => $timestamp,
+                'X-SIGNATURE'  => $signature,
+            ],
+            'body'    => wp_json_encode([
+                'client_id'     => $this->client_id,
+                'client_secret' => $this->client_secret,
+            ]),
+            'timeout' => 15,
+        ]
+    );
+
+    if (is_wp_error($response)) {
+        return $response;
+    }
+
+    $body = json_decode(wp_remote_retrieve_body($response), true);
+
+    if (
+        empty($body['status']) ||
+        empty($body['data'])
+    ) {
+        return new WP_Error('invalid_api', 'Invalid user API response');
+    }
+
+    return $body['data'];
+}
+
+
+public function process_admin_options()
+{
+    // Let WooCommerce save fields first
+    parent::process_admin_options();
+
+    // Reload saved options
+    $this->init_settings();
+    $this->client_id     = $this->get_option('client_id');
+    $this->client_secret = $this->get_option('client_secret');
+
+    if (!$this->client_id || !$this->client_secret) {
+        delete_option('ezverse_profile');
+        return;
+    }
+
+    $profile = $this->fetch_user_profile();
+
+    if (is_wp_error($profile)) {
+        delete_option('ezverse_profile');
+        WC_Admin_Settings::add_error(
+            __('Ez-Verse verification failed.', 'text-domain')
+        );
+        return;
+    }
+
+    update_option('ezverse_profile', [
+        'verified'        => true,
+        'firstname'       => $profile['firstname'],
+        'lastname'        => $profile['lastname'],
+        'email'           => $profile['email'],
+        'image'           => $profile['image'],
+        'plan_name'       => $profile['plan_name'],
+        'plan_expired_at' => $profile['plan_expired_at'],
+    ]);
+
+    WC_Admin_Settings::add_message(
+        __('Ez-Verse account verified successfully.', 'text-domain')
+    );
+}
+
+	/**
      * Generate signature in plugin options.
      *
      * @since    1.0.1
@@ -360,6 +449,34 @@ if (!$order) {
 
 		public function init_form_fields()
 		{
+
+            $profile  = get_option('ezverse_profile');
+            $verified = !empty($profile['verified']);
+
+           if ($verified) {
+
+             $image = !empty($profile['image']) ? esc_url($profile['image']) : '';
+
+             $this->form_fields = [
+        'profile_card' => [
+            'title' => __('Ez-Verse Account', 'text-domain'),
+            'type'  => 'title',
+            'description' => '
+                <div class="ezverse-card">
+                    <img src="' . $image . '" style="width:64px;height:64px;border-radius:50%;margin-bottom:10px;" />
+                    <br>
+                    <strong>' . esc_html($profile['firstname'] . ' ' . $profile['lastname']) . '</strong><br>
+                    <small>' . esc_html($profile['email']) . '</small><br><br>
+                    <strong>Plan:</strong> ' . esc_html($profile['plan_name']) . '<br>
+                    <strong>Expires:</strong> ' . esc_html($profile['plan_expired_at']) . '<br><br>
+                    <a href="#" class="button" id="ezverse-edit">Edit credentials</a>
+                </div>',
+        ],
+    ];
+
+    return;
+}
+
 			$this->form_fields = array(
 				'enabled' => array(
 					'title'       => __('Enable/Disable', 'text-domain'),
@@ -594,4 +711,38 @@ if (!$order) {
     $gateway->check_payment_status($order_id);
 });
 
+
+add_action('wp_ajax_ezverse_reset_profile', function () {
+
+    delete_option('ezverse_profile');
+
+    wp_send_json_success();
+});
+
+
+
+add_action('admin_enqueue_scripts', function ($hook) {
+
+    // Only load on WooCommerce settings
+    if ($hook !== 'woocommerce_page_wc-settings') {
+        return;
+    }
+
+    wp_enqueue_script(
+        'ezverse-admin',
+        plugin_dir_url(__FILE__) . 'admin/js/ez-verse-admin.js',
+        ['jquery'],
+        '1.0.1',
+        true
+    );
+
+    wp_localize_script(
+        'ezverse-admin',
+        'ezverseAdmin',
+        [
+            'ajax_url' => admin_url('admin-ajax.php'),
+            'nonce'    => wp_create_nonce('ezverse_reset_nonce'),
+        ]
+    );
+});
 });
