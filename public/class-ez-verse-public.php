@@ -442,8 +442,8 @@ if (!$order) {
         $order->add_order_note('EZVERSE payment FAILED via webhook', true);
     }
 
-    echo json_encode(['status' => true]);
-    wp_die();
+    status_header(200);
+    wp_send_json(['status' => true]);
 }
 
 
